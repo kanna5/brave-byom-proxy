@@ -18,8 +18,19 @@ Run it locally, in a Docker container, or on your cloud server, then configure
 Brave to use its API endpoint instead of OpenAI's.
 
 ```sh
+# Download dependencies
 uv sync
+
+# Run locally
 uv run fastapi run main.py
+
+# Build docker image
+docker build --pull -t brave-byom-proxy .
+
+# Run the docker image
+docker run --rm --network host brave-byom-proxy
+# Run on specific host and port
+docker run --rm --network host brave-byom-proxy --host 192.168.1.123 --port 8001
 ```
 
 When serving it on a publicly accessible server, make sure to set an access
@@ -38,7 +49,7 @@ BYOMPROXY_REQUEST_TIMEOUT=60
 BYOMPROXY_ACCESS_TOKEN=
 ```
 
-When `BYOMPROXY_ACCESS_TOKEN` is set, you need to append it to the upstream API
+When `BYOMPROXY_ACCESS_TOKEN` is set, you need to prepend it to the upstream API
 key with a colon.
 
 For example, with `BYOMPROXY_ACCESS_TOKEN=hello` and your OpenAI API key
@@ -64,7 +75,7 @@ Please refer to the [official API document](https://platform.openai.com/docs/api
 ## Tips
 
 Although OpenAI doesn't return the model's reasoning in the chat completions
-API, you can add an instruction in the system prompt asking the model to append
+API, you can add an instruction in the system prompt asking the model to prepend
 a `<think></think>` block to its response.
 
 For example, I added this:
