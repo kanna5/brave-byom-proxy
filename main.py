@@ -1,6 +1,12 @@
-def main():
-    print("Hello from brave-byom-proxy!")
+import logging
 
+import dotenv
 
-if __name__ == "__main__":
-    main()
+from app import app
+from config import config
+
+__all__ = ["app"]
+
+dotenv.load_dotenv()
+config.load_from_env()
+logging.basicConfig(level=logging.INFO)
