@@ -42,7 +42,7 @@ BYOMPROXY_UPSTREAM_ENDPOINT=https://api.openai.com/v1/chat/completions
 
 # Timeout when requesting the upstream endpoint. Reasoning models can take
 # longer to response, so don't set it too short.
-BYOMPROXY_REQUEST_TIMEOUT=60
+BYOMPROXY_REQUEST_TIMEOUT=300
 
 # Empty by default.
 BYOMPROXY_ACCESS_TOKEN=

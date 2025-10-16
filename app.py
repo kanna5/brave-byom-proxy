@@ -1,18 +1,30 @@
-from typing import Literal
+import asyncio
+import json
+import logging
+import re
+from typing import Awaitable, Literal
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from starlette.background import BackgroundTask
 
 from config import config
 
-app = FastAPI()
+app = FastAPI(openapi_url=None)
+app.add_middleware(GZipMiddleware)
+
 _client = httpx.AsyncClient()
+_logger = logging.getLogger(__name__)
 
 ReasoningEffort = Literal["minimal", "low", "medium", "high"]
 ServiceTier = Literal["auto", "default", "flex", "priority"]
 Verbosity = Literal["low", "medium", "high"]
+
+reasoning_models = [
+    re.compile(r"^o\d"),
+    re.compile(r"^gpt-5(-(mini|nano|codex))?(-[\d-]+)?$"),
+]
 
 
 def split_token(req_token: str) -> tuple[str | None, str | None]:
@@ -22,6 +34,47 @@ def split_token(req_token: str) -> tuple[str | None, str | None]:
     elif len(parts) == 2:
         return parts[0], parts[1]
     return None, None
+
+
+def forge_msg(msg: str | None):
+    if msg is None:
+        return (
+            """data: {"object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n"""
+            """data: [DONE]\n\n"""
+        )
+    msg_encoded = json.dumps(msg)
+    return (
+        """data: {"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"""
+        f"{msg_encoded}"
+        """},"finish_reason":null}]}\n\n"""
+    )
+
+
+async def proxy_result(resp: Awaitable[httpx.Response]):
+    keepalive_str = ": keep-alive\n\n"
+    yield keepalive_str
+
+    while True:
+        try:
+            real_resp = await asyncio.wait_for(asyncio.shield(resp), 10)
+            real_resp.raise_for_status()
+            try:
+                async for text in real_resp.aiter_text():
+                    yield text
+                break
+            finally:
+                await real_resp.aclose()
+
+        except TimeoutError:
+            yield keepalive_str
+            continue
+
+        except Exception as exc:
+            yield forge_msg(
+                "Error occurred while requesting model response. Check server logs for details.\n"
+            )
+            yield forge_msg(None)
+            raise exc
 
 
 @app.post("/v1/chat/completions")
@@ -46,8 +99,24 @@ async def completions(
             {"error": f"Error while parsing request: {type(e).__name__}: {str(e)}"}, 400
         )
 
-    if "temperature" in body:
-        del body["temperature"]
+    if config.log_request:
+        _logger.info(
+            "Request: %s",
+            json.dumps(
+                {"headers": dict(request.headers), "body": body},
+                separators=(",", ":"),
+            ),
+        )
+
+    if "stream" not in body or body["stream"] is not True:
+        return JSONResponse({"error": "Non-streaming requests are not supported"}, 400)
+
+    if "temperature" in body and "model" in body:
+        model: str = body["model"]
+        for pattern in reasoning_models:
+            if pattern.match(model):
+                del body["temperature"]
+                break
 
     if reasoning_effort:
         body["reasoning_effort"] = reasoning_effort
@@ -56,18 +125,16 @@ async def completions(
     if verbosity:
         body["verbosity"] = verbosity
 
-    req = _client.build_request(
+    upstream_req = _client.build_request(
         "post",
         config.upstream_endpoint,
         json=body,
         headers={"authorization": f"Bearer {upstream_token}"},
         timeout=config.request_timeout,
     )
-    r = await _client.send(req, stream=True)
-    r.raise_for_status()
 
+    resp = asyncio.create_task(_client.send(upstream_req, stream=True))
     return StreamingResponse(
-        r.aiter_text(),
-        headers={"content-type": r.headers.get("content-type")},
-        background=BackgroundTask(r.aclose),
+        proxy_result(resp),
+        headers={"content-type": "text/event-stream"},
     )
