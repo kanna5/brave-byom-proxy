@@ -71,9 +71,22 @@ async def proxy_result(resp: Awaitable[httpx.Response]):
 
         except Exception as exc:
             yield forge_msg(
-                "Error occurred while requesting model response. Check server logs for details.\n"
+                "🛑 Error occurred while requesting model response. Check server logs for details.\n"
             )
             yield forge_msg(None)
+
+            if isinstance(exc, httpx.HTTPStatusError):
+                # Log response headers and body
+                await exc.response.aread()
+                logobj = {
+                    "http": exc.response.status_code,
+                    "msg": str(exc),
+                    "headers": exc.response.headers,
+                    "body": exc.response.text,
+                }
+                _logger.error(logobj)
+                return
+
             raise exc
 
 
