@@ -17,7 +17,7 @@ app.add_middleware(GZipMiddleware)
 _client = httpx.AsyncClient()
 _logger = logging.getLogger(__name__)
 
-ReasoningEffort = Literal["minimal", "low", "medium", "high"]
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 ServiceTier = Literal["auto", "default", "flex", "priority"]
 Verbosity = Literal["low", "medium", "high"]
 
