@@ -1,4 +1,8 @@
-.git
+.git*
+.env*
+.docker*
+Dockerfile
+docker-compose*
 
 # Python-generated files
 __pycache__/
@@ -10,5 +14,3 @@ wheels/
 
 # Virtual environments
 .venv
-
-.env
