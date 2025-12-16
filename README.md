@@ -1,15 +1,17 @@
 # Brave-BYOM-Proxy
 
-A small proxy script that addresses issues when using Leo (Brave’s built-in AI
-assistant) with Bring Your Own Model (BYOM):
+A small proxy script that enables the use of OpenAI's flagship models in Brave
+Browser's Assistant (Leo) via Bring Your Own Model (BYOM).
 
-- Unable to use OpenAI’s reasoning models like gpt-5, o3, etc.  
-  Brave adds a `temperature` parameter that these models don’t support. The
-  proxy removes it before sending the request to OpenAI’s endpoint.
-- Timeout.  
-  Brave waits for approximately one minute, which is sometimes too short for
-  reasoning models. The proxy sends a keep-alive message every 10 seconds so the
-  browser keeps waiting.
+## Why
+
+The BYOM feature in Brave is not compatible with OpenAI's flagship models
+(e.g., GPT-5) because it always adds a `temperature` body parameter in API
+calls, which the newer models do not support, thus causing a 400 response from
+OpenAI's API and making it unusable.
+
+The proxy script strips the unsupported parameters, extends the timeout to
+allow models to reason longer, and adds a few adjustable parameters.
 
 ## Usage
 
@@ -49,6 +51,14 @@ BYOMPROXY_ACCESS_TOKEN=
 
 # Log requests for debugging (or curiosity). Set to 1 to enable.
 BYOMPROXY_LOG_REQUEST=
+
+# Set to 1 to disable the generation of conversation titles. All new conversations
+# will be titled "New conversation."
+BYOMPROXY_DISABLE_TITLE_GEN=
+
+# If set, this model will be used for generating conversation titles.
+# A faster model is recommended.
+BYOMPROXY_TITLE_GEN_MODEL=gpt-4o-mini
 ```
 
 When `BYOMPROXY_ACCESS_TOKEN` is set, prepend it to the upstream API key with a
@@ -59,9 +69,9 @@ For example, with `BYOMPROXY_ACCESS_TOKEN=hello` and your OpenAI API key
 
 In addition, these API parameters are configurable via query parameters:
 
-- reasoning_effort
-- service_tier
-- verbosity
+- [reasoning_effort](https://platform.openai.com/docs/api-reference/chat/create#chat_create-reasoning_effort)
+- [service_tier](https://platform.openai.com/docs/api-reference/chat/create#chat_create-service_tier)
+- [verbosity](https://platform.openai.com/docs/api-reference/chat/create#chat_create-verbosity)
 
 For example, when the script is running on `localhost:8000`, you can configure
 the server endpoint in Brave like this:
@@ -85,7 +95,7 @@ prepend a `<think></think>` block to its response.
 For example:
 
 ```
-- **Summarize your thinking:** Always start your response with a <think></think> block. Use it to store a concise summary of your reasoning for your own reference later in the conversation. It will be visible only to you.
+- **Summarize your thinking:** Always start your response with a <think></think> block. Use it to store a concise summary of your reasoning (e.g., path to conclusion) for your own reference later in the conversation. It will be visible only to you.
 ```
 
 ### Alternatives
