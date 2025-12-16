@@ -9,6 +9,12 @@ class Config:
     access_token: str | None = None
     log_request: bool = False
 
+    disable_title_gen: bool = False
+    """Return 400 for conversation title generation requests if set to True."""
+
+    title_gen_model: str | None = None
+    """If set, this model will be used for generating conversation titles."""
+
     def load_from_env(self, prefix: str = "BYOMPROXY_"):
         upstream_endpoint = os.getenv(f"{prefix}UPSTREAM_ENDPOINT")
         if upstream_endpoint:
@@ -32,6 +38,14 @@ class Config:
         log_request = os.getenv(f"{prefix}LOG_REQUEST") or ""
         if log_request.lower() in ["yes", "1", "true"]:
             self.log_request = True
+
+        disable_title_gen = os.getenv(f"{prefix}DISABLE_TITLE_GEN") or ""
+        if disable_title_gen.lower() in ["yes", "1", "true"]:
+            self.disable_title_gen = True
+
+        title_gen_model = os.getenv(f"{prefix}TITLE_GEN_MODEL")
+        if title_gen_model:
+            self.title_gen_model = title_gen_model
 
 
 config = Config()

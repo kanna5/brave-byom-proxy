@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Awaitable, Literal
 
+import fastapi
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -25,6 +26,18 @@ reasoning_models = [
     re.compile(r"^o\d"),
     re.compile(r"^gpt-5(\.\d+)?(-(mini|nano|codex))?(-[\d-]+)?$"),
 ]
+newer_models = re.compile(r"^gpt-[5-9]")
+
+
+def is_reasoning_model(name: str) -> bool:
+    for pattern in reasoning_models:
+        if pattern.match(name):
+            return True
+    return False
+
+
+def is_newer_model(name: str) -> bool:
+    return bool(newer_models.match(name))
 
 
 def split_token(req_token: str) -> tuple[str | None, str | None]:
@@ -90,6 +103,62 @@ async def proxy_result(resp: Awaitable[httpx.Response]):
             raise exc
 
 
+def is_title_gen_request(body) -> bool:
+    if not isinstance(body, dict):
+        return False
+    if "stream" in body and body["stream"] is not False:
+        return False
+    # look for `"stop": ["</title>"]`
+    if "stop" not in body or not (
+        isinstance(body["stop"], list) or isinstance(body["stop"], str)
+    ):
+        return False
+    return "</title>" in body["stop"]
+
+
+async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response:
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid request body"}, 400)
+
+    # Not supported by all models. Delete for better compatibility
+    del_opts = [
+        "reasoning_effort",
+        "stop",
+        "temperature",
+        "verbosity",
+    ]
+    for opt in del_opts:
+        if opt in body:
+            del body[opt]
+
+    if config.title_gen_model is not None:
+        body["model"] = config.title_gen_model
+
+    if is_reasoning_model(body["model"]):
+        body["reasoning_effort"] = "low"
+
+    if is_newer_model(body["model"]):
+        body["reasoning_effort"] = "minimal"
+        body["verbosity"] = "low"
+
+    upstream_req = _client.build_request(
+        "post",
+        config.upstream_endpoint,
+        json=body,
+        headers={"authorization": f"Bearer {upstream_token}"},
+        timeout=20,
+    )
+
+    upstream_resp = await _client.send(upstream_req)
+    resp_headers = dict(upstream_resp.headers)
+
+    return fastapi.Response(
+        upstream_resp.read(),
+        headers={"content-type": resp_headers["content-type"]},
+        status_code=upstream_resp.status_code,
+    )
+
+
 @app.post("/v1/chat/completions")
 async def completions(
     request: Request,
@@ -121,15 +190,9 @@ async def completions(
             ),
         )
 
-    if "stream" not in body or body["stream"] is not True:
-        return JSONResponse({"error": "Non-streaming requests are not supported"}, 400)
-
     if "temperature" in body and "model" in body:
-        model: str = body["model"]
-        for pattern in reasoning_models:
-            if pattern.match(model):
-                del body["temperature"]
-                break
+        if is_reasoning_model(body["model"]):
+            del body["temperature"]
 
     if reasoning_effort:
         body["reasoning_effort"] = reasoning_effort
@@ -137,6 +200,14 @@ async def completions(
         body["service_tier"] = service_tier
     if verbosity:
         body["verbosity"] = verbosity
+
+    if is_title_gen_request(body):
+        if config.disable_title_gen:
+            return JSONResponse({"error": "Title generation is disabled"}, 400)
+        return await proxy_title_gen_request(body, upstream_token)
+
+    if "stream" not in body or body["stream"] is not True:
+        return JSONResponse({"error": "Non-streaming requests are not supported"}, 400)
 
     upstream_req = _client.build_request(
         "post",
