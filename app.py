@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
+import misc
 from config import config
 
 app = FastAPI(openapi_url=None)
@@ -25,6 +26,7 @@ Verbosity = Literal["low", "medium", "high"]
 reasoning_models = [
     re.compile(r"^o\d"),
     re.compile(r"^gpt-5(\.\d+)?(-(mini|nano|codex))?(-[\d-]+)?$"),
+    re.compile(r"^claude-[a-z]+-(4-[7-9]|[5-9])"),
 ]
 newer_models = re.compile(r"^gpt-[5-9]")
 
@@ -123,7 +125,7 @@ async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response
     # Not supported by all models. Delete for better compatibility
     del_opts = [
         "reasoning_effort",
-        "stop",
+        # "stop",
         "temperature",
         "verbosity",
     ]
@@ -132,7 +134,10 @@ async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response
             del body[opt]
 
     if config.title_gen_model is not None:
-        body["model"] = config.title_gen_model
+        if "claude" in body["model"]:
+            body["model"] = "claude-haiku-4-5-20251001"
+        else:
+            body["model"] = config.title_gen_model
 
     if is_reasoning_model(body["model"]):
         body["reasoning_effort"] = "low"
@@ -143,7 +148,9 @@ async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response
 
     upstream_req = _client.build_request(
         "post",
-        config.upstream_endpoint,
+        misc.ANTHROPIC_API_ENDPOINT
+        if "claude" in body["model"]
+        else config.upstream_endpoint,
         json=body,
         headers={"authorization": f"Bearer {upstream_token}"},
         timeout=20,
@@ -190,12 +197,17 @@ async def completions(
             ),
         )
 
-    if "temperature" in body and "model" in body:
+    if "model" not in body:
+        return JSONResponse({"error": "model is required"}, 400)
+
+    is_claude = "claude" in body["model"]
+    if "temperature" in body:
         if is_reasoning_model(body["model"]):
             del body["temperature"]
 
     if reasoning_effort:
-        body["reasoning_effort"] = reasoning_effort
+        if not is_claude:  # sad
+            body["reasoning_effort"] = reasoning_effort
     if service_tier:
         body["service_tier"] = service_tier
     if verbosity:
@@ -211,7 +223,7 @@ async def completions(
 
     upstream_req = _client.build_request(
         "post",
-        config.upstream_endpoint,
+        misc.ANTHROPIC_API_ENDPOINT if is_claude else config.upstream_endpoint,
         json=body,
         headers={"authorization": f"Bearer {upstream_token}"},
         timeout=config.request_timeout,
