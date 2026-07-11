@@ -25,7 +25,9 @@ Verbosity = Literal["low", "medium", "high"]
 
 reasoning_models = [
     re.compile(r"^o\d"),
-    re.compile(r"^gpt-5(\.\d+)?(-(mini|nano|codex))?(-[\d-]+)?$"),
+    re.compile(
+        r"^gpt-[5-9](\.\d+)?(-(nano|mini|codex|pro|luna|terra|sol))?(-[\d-]+)?$"
+    ),
     re.compile(r"^claude-[a-z]+-(4-[7-9]|[5-9])"),
 ]
 newer_models = re.compile(r"^gpt-[5-9]")
