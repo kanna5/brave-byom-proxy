@@ -12,7 +12,7 @@ class Config:
     disable_title_gen: bool = False
     """Return 400 for conversation title generation requests if set to True."""
 
-    title_gen_model: str | None = "gpt-4o-mini"
+    title_gen_model: str | None = "gpt-5.6-luna"
     """If set, this model will be used for generating conversation titles."""
 
     def load_from_env(self, prefix: str = "BYOMPROXY_"):

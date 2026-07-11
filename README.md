@@ -58,7 +58,7 @@ BYOMPROXY_DISABLE_TITLE_GEN=
 
 # If set, this model will be used for generating conversation titles.
 # A faster model is recommended.
-BYOMPROXY_TITLE_GEN_MODEL=gpt-4o-mini
+BYOMPROXY_TITLE_GEN_MODEL=gpt-5.6-luna
 ```
 
 When `BYOMPROXY_ACCESS_TOKEN` is set, prepend it to the upstream API key with a

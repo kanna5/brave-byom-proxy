@@ -18,13 +18,16 @@ app.add_middleware(GZipMiddleware)
 _client = httpx.AsyncClient()
 _logger = logging.getLogger(__name__)
 
-ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
-ServiceTier = Literal["auto", "default", "flex", "priority"]
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+ServiceTier = Literal["auto", "default", "flex", "scale", "priority"]
 Verbosity = Literal["low", "medium", "high"]
 
 reasoning_models = [
     re.compile(r"^o\d"),
-    re.compile(r"^gpt-5(\.\d+)?(-(mini|nano|codex))?(-[\d-]+)?$"),
+    re.compile(
+        r"^gpt-[5-9](\.\d+)?(-(nano|mini|codex|pro|luna|terra|sol))?(-[\d-]+)?$"
+    ),
+    re.compile(r"^claude-[a-z]+-(4-[7-9]|[5-9])"),
 ]
 newer_models = re.compile(r"^gpt-[5-9]")
 
@@ -120,7 +123,7 @@ async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response
     if not isinstance(body, dict):
         return JSONResponse({"error": "invalid request body"}, 400)
 
-    # Not supported by all models. Delete for better compatibility
+    # Not all models support these parameters. Delete for better compatibility
     del_opts = [
         "reasoning_effort",
         "stop",
@@ -138,7 +141,6 @@ async def proxy_title_gen_request(body, upstream_token: str) -> fastapi.Response
         body["reasoning_effort"] = "low"
 
     if is_newer_model(body["model"]):
-        body["reasoning_effort"] = "minimal"
         body["verbosity"] = "low"
 
     upstream_req = _client.build_request(
